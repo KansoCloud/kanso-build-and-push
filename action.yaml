@@ -1,14 +1,27 @@
 name: setup aws
 description: "Config AWS"
 inputs:
-  image_tag:
-    description: "AWS ECR image tag"
+  Cloud:
+    description: Name of the cloud AWS or Duplo
+    required: true
+  tenant:
+    description: name of the duplo tenant
     required: false
   duplo_token:
+    required: false
+  role_arn:
+    description: role arn og oidc role
+    required: false
+  aws-region:
+    required: false
+  # ecr_repo:
+  #   description: type of ECR repo "Public" or "Private"
+  #   required: true
+  image_tag:
+    description: "AWS ECR image tag "ECR repo name":"Image tag name"
+    example = "reancare-service-dev-uat:develop_798hdfm9" "
     required: true
   task_def:
-    required: true
-  aws-region:
     required: true
   service_name:
     required: true
@@ -17,16 +30,35 @@ runs:
   using: "composite"
   steps:
     - name: aws-jit
+      if : $ {{ inputs.Cloud == 'Duplo' }}
       uses: duplocloud/ghactions-aws-jit@master
       with:
         duplo_host: https://reanfoundation.duplocloud.net/
         duplo_token: ${{ inputs.duplo_token }}
-        tenant: dev
+        tenant: ${{ inputs.tenant }}
+        
+    - name: configure aws credentials
+      if : $ {{ inputs.Cloud == 'AWS' }}
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        role-to-assume: ${{ inputs.role_arn }}
+        role-session-name: REANRoleSession
+        aws-region: ${{ inputs.aws-region }}
+      
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
+      
     - name: Login to Amazon ECR
+      if: ${{ inputs.tenant != 'prod' }}
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Login to Amazon ECR
+      if: ${{ inputs.tenant == 'prod' }}
+      shell: bash
+      run: |
+        aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
+      
     - name: Cache Docker layers
       uses: actions/cache@v3
       with:
@@ -34,52 +66,81 @@ runs:
         key: ${{ runner.os }}-buildx-${{ github.sha }}
         restore-keys: |
             ${{ runner.os }}-buildx-
+            
     - name: Build
+      if: ${{ inputs.tenant != 'prod' }}
       id: docker_build
       uses: docker/build-push-action@v3
       with:
           context: ./
           file: ./Dockerfile
           builder: ${{ steps.buildx.outputs.name }}
-          push: false
+          push: true
           tags: ${{ steps.login-ecr.outputs.registry }}/${{ inputs.image_tag }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache
 
-    # - name: Image digest
-    #   shell: bash
-    #   run: echo ${{ steps.docker_build.outputs.digest }}
-    # - name: Download task definition
-    #   shell: bash
-    #   run: |
-    #     aws ecs describe-task-definition --task-definition ${{ inputs.task_def }} \
-    #     --query taskDefinition > task-definition.json
+    - name: Build
+      if: ${{ inputs.tenant == 'prod' }}
+      id: docker_build
+      uses: docker/build-push-action@v3
+      with:
+          context: ./
+          file: ./Dockerfile
+          builder: ${{ steps.buildx.outputs.name }}
+          push: true
+          tags: public.ecr.aws/i9y2d4u3/${{ inputs.image_tag }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache
+
+    - name: Image digest
+      shell: bash
+      run: echo ${{ steps.docker_build.outputs.digest }}
+    - name: Download task definition
+      shell: bash
+      run: |
+        aws ecs describe-task-definition --task-definition ${{ inputs.task_def }} \
+        --query taskDefinition > task-definition.json
         
-    # - name: New image ID in the Amazon ECS task definition
-    #   id: task-def
-    #   uses: aws-actions/amazon-ecs-render-task-definition@v1
-    #   with:
-    #     task-definition: task-definition.json
-    #     container-name: default
-    #     image: ${{ steps.login-ecr.outputs.registry }}/${{ inputs.image_tag }}
-    # - name: Deploy Amazon ECS task definition
-    #   uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-    #   with:
-    #     task-definition: ${{ steps.task-def.outputs.task-definition }}
-    #     wait-for-service-stability: true
-    # - name: Task Definition Variable
-    #   id: taskdefintionvar
-    #   shell: bash
-    #   run: |
-    #     echo "task_definition_arn=$(aws ecs describe-task-definition --task-definition ${{ inputs.task_def }} | jq '.[] | .taskDefinitionArn')" >> $GITHUB_OUTPUT
-    # - name: Task Defintion ARN
-    #   shell: bash
-    #   run: |
-    #     echo "Task Defintion: ${{ steps.taskdefintionvar.outputs.task_definition_arn }}"
+    - name: New image ID in the Amazon ECS task definition
+      if: ${{ inputs.tenant != 'prod' }}
+      id: task-def
+      uses: aws-actions/amazon-ecs-render-task-definition@v1
+      with:
+        task-definition: task-definition.json
+        container-name: default
+        image: ${{ steps.login-ecr.outputs.registry }}/${{ inputs.image_tag }}
+        
+    - name: New image ID in the Amazon ECS task definition
+      if: ${{ inputs.tenant == 'prod' }}
+      id: task-def
+      uses: aws-actions/amazon-ecs-render-task-definition@v1
+      with:
+        task-definition: task-definition.json
+        container-name: default
+        image: public.ecr.aws/i9y2d4u3/${{ inputs.image_tag }}
+        
+    - name: Deploy Amazon ECS task definition
+      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+      with:
+        task-definition: ${{ steps.task-def.outputs.task-definition }}
+        wait-for-service-stability: true
+        
+    - name: Task Definition Variable
+      id: taskdefintionvar
+      shell: bash
+      run: |
+        echo "task_definition_arn=$(aws ecs describe-task-definition --task-definition ${{ inputs.task_def }} | jq '.[] | .taskDefinitionArn')" >> $GITHUB_OUTPUT
+        
+    - name: Task Defintion ARN
+      shell: bash
+      run: |
+        echo "Task Defintion: ${{ steps.taskdefintionvar.outputs.task_definition_arn }}"
+        
     # - name: Deploy Amazon ECS task definition using Duplo API
     #   uses: fjogeleit/http-request-action@master
     #   with:
-    #     url: 'https://reanfoundation.duplocloud.net/subscriptions/${{ secrets.DUPLO_ID }}/UpdateEcsService'
+    #     url: 'https://reanfoundation.duplocloud.net/subscriptions/${{ inputs.duplo_id }}/UpdateEcsService'
     #     method: 'POST'
     #     data: '{"TaskDefinition":${{ steps.taskdefintionvar.outputs.task_definition_arn }},"Name": "${{ inputs.service_name }}","Replicas":1, "HealthCheckGracePeriodSeconds": 1200}'
-    #     bearerToken: ${{ secrets.DUPLOCLOUD_TOKEN }}
+    #     bearerToken: ${{ inputs.duplocloud_token }}
