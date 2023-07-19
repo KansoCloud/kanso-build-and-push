@@ -24,6 +24,9 @@ inputs:
     required: true
   service_name:
     required: true
+outputs:
+  image:
+    value: ${{ steps.docker_build.outputs.metadata }}
     
 runs:
   using: "composite"
@@ -68,7 +71,7 @@ runs:
             
     - name: Build and push (NON PROD)
       if: ${{ inputs.tenant != 'prod' }}
-      # id: docker_build
+      id: docker_build
       uses: docker/build-push-action@v3
       with:
           context: ./
@@ -92,9 +95,6 @@ runs:
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache
 
-    # - name: Image digest
-    #   shell: bash
-    #   run: echo ${{ steps.docker_build.outputs.digest }}
     - name: Download task definition
       shell: bash
       run: |
