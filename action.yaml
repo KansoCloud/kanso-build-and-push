@@ -18,8 +18,7 @@ inputs:
   #   description: type of ECR repo "Public" or "Private"
   #   required: true
   image_tag:
-    description: "AWS ECR image tag "ECR repo name":"Image tag name"
-    example = "reancare-service-dev-uat:develop_798hdfm9" "
+    description: "AWS ECR image tag "ECR repo name":"Image tag name" example = "reancare-service-dev-uat:develop_798hdfm9" "
     required: true
   task_def:
     required: true
