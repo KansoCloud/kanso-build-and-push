@@ -14,9 +14,9 @@ inputs:
     required: false
   aws-region:
     required: false
-  # ecr_repo:
-  #   description: type of ECR repo "Public" or "Private"
-  #   required: true
+  repo_type:
+    description: type of ECR repo "public" or "private"
+    required: true
   image_tag:
     description: "AWS ECR image tag 'ECR repo name':'Image tag name' example = 'reancare-service-dev-uat:develop_798hdfm9' "
     required: true
@@ -24,9 +24,6 @@ inputs:
     required: true
   service_name:
     required: true
-outputs:
-  image:
-    value: ${{ steps.docker_build.outputs.imageid }}
     
 runs:
   using: "composite"
@@ -51,12 +48,12 @@ runs:
       uses: docker/setup-buildx-action@v2
       
     - name: Login to Amazon ECR
-      if: ${{ inputs.tenant != 'prod' }}
+      if: ${{ inputs.repo_type == 'private' }}
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v1
 
     - name: Login to Amazon ECR
-      if: ${{ inputs.tenant == 'prod' }}
+      if: ${{ inputs.repo_type == 'public' }}
       shell: bash
       run: |
         aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
@@ -70,7 +67,7 @@ runs:
             ${{ runner.os }}-buildx-
             
     - name: Build and push (NON PROD)
-      if: ${{ inputs.tenant != 'prod' }}
+      if: ${{ inputs.repo_type == 'private' }}
       id: docker_build
       uses: docker/build-push-action@v3
       with:
@@ -83,7 +80,7 @@ runs:
           cache-to: type=local,dest=/tmp/.buildx-cache
 
     - name: Build and push (PROD)
-      if: ${{ inputs.tenant == 'prod' }}
+      if: ${{ inputs.repo_type == 'public' }}
       # id: docker_build
       uses: docker/build-push-action@v3
       with:
@@ -102,8 +99,8 @@ runs:
         --query taskDefinition > task-definition.json
         
     - name: New image ID in the Amazon ECS task definition
-      if: ${{ inputs.tenant != 'prod' }}
-      id: task-def-non-prod
+      if: ${{ inputs.repo_type == 'private' }}
+      id: task-def-private
       uses: aws-actions/amazon-ecs-render-task-definition@v1
       with:
         task-definition: task-definition.json
@@ -111,8 +108,8 @@ runs:
         image: ${{ steps.login-ecr.outputs.registry }}/${{ inputs.image_tag }}
         
     - name: New image ID in the Amazon ECS task definition
-      if: ${{ inputs.tenant == 'prod' }}
-      id: task-def-prod
+      if: ${{ inputs.repo_type == 'public' }}
+      id: task-def-public
       uses: aws-actions/amazon-ecs-render-task-definition@v1
       with:
         task-definition: task-definition.json
@@ -120,17 +117,17 @@ runs:
         image: public.ecr.aws/i9y2d4u3/${{ inputs.image_tag }}
         
     - name: Deploy Amazon ECS task definition
-      if: ${{ inputs.tenant != 'prod' }}
+      if: ${{ inputs.repo_type == 'private' }}
       uses: aws-actions/amazon-ecs-deploy-task-definition@v1
       with:
-        task-definition: ${{ steps.task-def-non-prod.outputs.task-definition }}
+        task-definition: ${{ steps.task-def-private.outputs.task-definition }}
         wait-for-service-stability: true
     
     - name: Deploy Amazon ECS task definition
-      if: ${{ inputs.tenant == 'prod' }}
+      if: ${{ inputs.repo_type == 'public' }}
       uses: aws-actions/amazon-ecs-deploy-task-definition@v1
       with:
-        task-definition: ${{ steps.task-def-prod.outputs.task-definition }}
+        task-definition: ${{ steps.task-def-public.outputs.task-definition }}
         wait-for-service-stability: true
         
     - name: Task Definition Variable
