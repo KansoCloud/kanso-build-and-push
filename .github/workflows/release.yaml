@@ -1,0 +1,22 @@
+name: release-ci-cd
+
+on:
+  workflow_dispatch:
+
+jobs:
+  create-release:
+    permi
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          filed_dept: 0
+          
+      - name: New Release Publish
+        id: new_publish
+        uses: release-drafter/release-drafter@v5
+        with:
+          publish : true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
