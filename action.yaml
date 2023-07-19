@@ -26,7 +26,7 @@ inputs:
     required: true
 outputs:
   image:
-    value: ${{ steps.docker_build.outputs.metadata }}
+    value: ${{ steps.docker_build.outputs.imageid }}
     
 runs:
   using: "composite"
