@@ -92,6 +92,22 @@ runs:
           tags: public.ecr.aws/i9y2d4u3/${{ inputs.image_tag }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache
+          
+    - name: Scan image
+      if: ${{ inputs.repo_type == 'private' }}
+      uses: anchore/scan-action@v3
+      with:
+      image: "${{ steps.login-ecr.outputs.registry }}/${{ inputs.image_tag }}"
+      fail-build: true
+      severity-cutoff: critical
+
+    - name: Scan image
+      if: ${{ inputs.repo_type == 'public' }}
+      uses: anchore/scan-action@v3
+      with:
+      image: "public.ecr.aws/i9y2d4u3/${{ inputs.image_tag }}"
+      fail-build: true
+      severity-cutoff: critical
 
     - name: Download task definition
       shell: bash
