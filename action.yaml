@@ -7,6 +7,8 @@ inputs:
   tenant:
     description: name of the duplo tenant
     required: false
+  duplo_id:
+    required: false
   duplo_token:
     required: false
   role_arn:
@@ -158,10 +160,10 @@ runs:
       run: |
         echo "Task Defintion: ${{ steps.taskdefintionvar.outputs.task_definition_arn }}"
         
-    # - name: Deploy Amazon ECS task definition using Duplo API
-    #   uses: fjogeleit/http-request-action@master
-    #   with:
-    #     url: 'https://reanfoundation.duplocloud.net/subscriptions/${{ inputs.duplo_id }}/UpdateEcsService'
-    #     method: 'POST'
-    #     data: '{"TaskDefinition":${{ steps.taskdefintionvar.outputs.task_definition_arn }},"Name": "${{ inputs.service_name }}","Replicas":1, "HealthCheckGracePeriodSeconds": 1200}'
-    #     bearerToken: ${{ inputs.duplocloud_token }}
+    - name: Deploy Amazon ECS task definition using Duplo API
+      uses: fjogeleit/http-request-action@master
+      with:
+        url: 'https://reanfoundation.duplocloud.net/subscriptions/${{ inputs.duplo_id }}/UpdateEcsService'
+        method: 'POST'
+        data: '{"TaskDefinition":${{ steps.taskdefintionvar.outputs.task_definition_arn }},"Name": "${{ inputs.service_name }}","Replicas":1, "HealthCheckGracePeriodSeconds": 1200}'
+        bearerToken: ${{ inputs.duplo_token }}
